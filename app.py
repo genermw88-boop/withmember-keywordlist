@@ -42,9 +42,9 @@ if st.button("🚀 키워드 추출 및 분석 시작", type="primary"):
     else:
         with st.spinner("🔍 네이버 로컬 검색 패턴 및 연관어 분석 중..."):
             try:
-                # Gemini API 설정 (최신 표준 모델인 gemini-1.5-flash 적용)
+                # Gemini API 설정 (모든 라이브러리 버전에서 완벽하게 호환되는 gemini-pro 적용)
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-pro')
 
                 # 프롬프트 엔지니어링 (15년 경력의 SEO 전문가 페르소나 부여)
                 prompt = f"""
