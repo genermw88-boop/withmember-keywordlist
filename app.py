@@ -1,10 +1,8 @@
 import os
 import io
-import urllib.request
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
 from google import genai
 
 # 페이지 설정
@@ -14,23 +12,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 📊 Matplotlib 한글 폰트 자동 설정 (Streamlit Cloud 환경 대응)
-@st.cache_resource
-def setup_korean_font():
-    font_path = "NanumGothic.ttf"
-    if not os.path.exists(font_path):
-        try:
-            url = "https://github.com/google/fonts/raw/main/apache/nanumgothic/NanumGothic-Regular.ttf"
-            urllib.request.urlretrieve(url, font_path)
-        except Exception:
-            pass
-    if os.path.exists(font_path):
-        fm.fontManager.addfont(font_path)
-        prop = fm.FontProperties(fname=font_path)
-        plt.rcParams['font.family'] = prop.get_name()
-    plt.rcParams['axes.unicode_minus'] = False
-
-setup_korean_font()
+# 📊 Matplotlib 시스템 한글 폰트 설정 (NanumGothic)
+plt.rcParams['font.family'] = 'NanumGothic'
+plt.rcParams['axes.unicode_minus'] = False
 
 # 헤더 섹션
 st.title("🎯 스마트플레이스 SEO 대표 키워드 자동 추출기")
@@ -47,7 +31,7 @@ else:
         st.markdown("### 💡 개발자 팁")
         st.info("지역명은 '남양주시 별내동'처럼 세부 동 단위까지 입력할수록 정확도가 높아집니다.")
 
-# 메인 입력 폼 (2행 구조)
+# 메인 입력 폼
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -72,7 +56,6 @@ def markdown_table_to_image(markdown_text, title="스마트플레이스 추천 �
             table_data.append(cols)
     
     if len(table_data) < 2:
-        # 테이블 파싱 실패 시 텍스트 전체를 이미지로 렌더링
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.axis('off')
         ax.text(0.05, 0.95, markdown_text, transform=ax.transAxes, fontsize=11, verticalalignment='top', wrap=True)
