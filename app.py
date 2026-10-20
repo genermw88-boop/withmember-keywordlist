@@ -1,8 +1,10 @@
 import os
 import io
+import urllib.request
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 from google import genai
 
 # 페이지 설정
@@ -12,8 +14,26 @@ st.set_page_config(
     layout="wide"
 )
 
-# 📊 Matplotlib 시스템 한글 폰트 설정 (NanumGothic)
-plt.rcParams['font.family'] = 'NanumGothic'
+# 📊 한글 폰트 강제 로드 및 등록 함수 (직접 TTF 다운로드 방식)
+@st.cache_resource
+def get_korean_font():
+    font_path = "NanumGothic.ttf"
+    if not os.path.exists(font_path):
+        try:
+            url = "https://github.com/google/fonts/raw/main/apache/nanumgothic/NanumGothic-Regular.ttf"
+            urllib.request.urlretrieve(url, font_path)
+        except Exception:
+            pass
+    
+    if os.path.exists(font_path):
+        fm.fontManager.addfont(font_path)
+        prop = fm.FontProperties(fname=font_path)
+        return prop
+    return None
+
+font_prop = get_korean_font()
+if font_prop:
+    plt.rcParams['font.family'] = font_prop.get_name()
 plt.rcParams['axes.unicode_minus'] = False
 
 # 헤더 섹션
@@ -44,7 +64,7 @@ with col3:
 # 이벤트/시즌별 키워드 입력 필드 (선택 사항)
 event_input = st.text_input("🎯 이벤트 / 시즌별 키워드 조건 (선택 입력)", placeholder="예: 크리스마스, 여름휴가, 수험생 할인 등 (입력 시에만 반영됩니다)")
 
-# 마크다운 테이블을 이미지(BytesIO)로 변환하는 함수
+# 마크다운 테이블을 이미지(BytesIO)로 변환하는 함수 (셀 단위 폰트 강제 적용 포함)
 def markdown_table_to_image(markdown_text, title="스마트플레이스 추천 키워드 분석"):
     lines = [line.strip() for line in markdown_text.split('\n') if '|' in line]
     table_data = []
@@ -58,7 +78,8 @@ def markdown_table_to_image(markdown_text, title="스마트플레이스 추천 �
     if len(table_data) < 2:
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.axis('off')
-        ax.text(0.05, 0.95, markdown_text, transform=ax.transAxes, fontsize=11, verticalalignment='top', wrap=True)
+        ax.text(0.05, 0.95, markdown_text, transform=ax.transAxes, fontsize=11, 
+                verticalalignment='top', wrap=True, fontproperties=font_prop)
         buf = io.BytesIO()
         plt.savefig(buf, format='png', bbox_inches='tight', dpi=300)
         plt.close(fig)
@@ -76,15 +97,23 @@ def markdown_table_to_image(markdown_text, title="스마트플레이스 추천 �
     table.set_fontsize(10)
     table.scale(1, 1.8)
     
-    # 테이블 스타일링
+    # 🔑 핵심: 테이블의 모든 셀(Cell)마다 한글 폰트 속성을 직접 강제 지정
     for (row, col), cell in table.get_celld().items():
+        if font_prop:
+            cell.get_text().set_fontproperties(font_prop)
         if row == 0:
             cell.set_facecolor('#2E7D32')
             cell.set_text_props(color='white', weight='bold')
+            if font_prop:
+                cell.get_text().set_fontproperties(font_prop)
         else:
             cell.set_facecolor('#F1F8E9' if row % 2 == 0 else '#FFFFFF')
 
-    plt.title(title, fontsize=15, weight='bold', pad=25, color='#1B5E20')
+    # 타이틀 폰트 적용
+    if font_prop:
+        plt.title(title, fontsize=15, weight='bold', pad=25, color='#1B5E20', fontproperties=font_prop)
+    else:
+        plt.title(title, fontsize=15, weight='bold', pad=25, color='#1B5E20')
     
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight', dpi=300)
