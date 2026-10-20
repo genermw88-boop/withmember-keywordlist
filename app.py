@@ -1,5 +1,7 @@
 import os
 import io
+import re
+import urllib.request
 import streamlit as st
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
@@ -40,42 +42,36 @@ with col3:
 # 이벤트/시즌별 키워드 입력 필드 (선택 사항)
 event_input = st.text_input("🎯 이벤트 / 시즌별 키워드 조건 (선택 입력)", placeholder="예: 크리스마스, 여름휴가, 수험생 할인 등 (입력 시에만 반영됩니다)")
 
-# 🔤 우분투 시스템 나눔폰트 경로 직접 로드 (다운로드 방식 완전 배제)
+# 🔤 100% 신뢰할 수 있는 나눔고딕 폰트 로드 및 검증 함수
 @st.cache_resource
-def load_system_fonts():
-    # 리눅스 시스템에 패키지로 설치된 나눔고딕 경로 우선 탐색
-    font_paths = [
-        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-        "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-    ]
+def load_robust_font():
+    font_path = "/tmp/NanumGothic.ttf"
+    # 파일이 없거나 다운로드 실패로 용량이 너무 작으면 재다운로드
+    if not os.path.exists(font_path) or os.path.getsize(font_path) < 100000:
+        try:
+            url = "https://github.com/google/fonts/raw/main/apache/nanumgothic/NanumGothic-Regular.ttf"
+            urllib.request.urlretrieve(url, font_path)
+        except Exception as e:
+            st.error(f"폰트 다운로드 중 오류 발생: {e}")
     
-    selected_font_path = None
-    for path in font_paths:
-        if os.path.exists(path):
-            selected_font_path = path
-            break
-            
     try:
-        if selected_font_path:
-            title_font = ImageFont.truetype(selected_font_path, 22)
-            header_font = ImageFont.truetype(selected_font_path, 14)
-            cell_font = ImageFont.truetype(selected_font_path, 13)
-        else:
-            # 시스템에 없다면 기본 폰트
-            title_font = ImageFont.load_default()
-            header_font = ImageFont.load_default()
-            cell_font = ImageFont.load_default()
-    except Exception:
-        title_font = ImageFont.load_default()
-        header_font = ImageFont.load_default()
-        cell_font = ImageFont.load_default()
-        
-    return title_font, header_font, cell_font
+        title_font = ImageFont.truetype(font_path, 22)
+        header_font = ImageFont.truetype(font_path, 14)
+        cell_font = ImageFont.truetype(font_path, 13)
+        return title_font, header_font, cell_font
+    except Exception as e:
+        st.error(f"폰트 적용 실패: {e}")
+        return ImageFont.load_default(), ImageFont.load_default(), ImageFont.load_default()
 
-title_font, header_font, cell_font = load_system_fonts()
+title_font, header_font, cell_font = load_robust_font()
 
-# 텍스트를 지정된 너비에 맞게 줄바꿈하는 헬퍼 함수
+# 마크다운 특수문자(** 등) 제거 헬퍼 함수
+def clean_markdown(text):
+    # **텍스트** 형태를 제거하고 순수 텍스트만 남김
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    return text.strip()
+
+# 텍스트 줄바꿈 함수
 def wrap_text(text, font, max_width, draw):
     lines = []
     for paragraph in text.split('\n'):
@@ -94,19 +90,19 @@ def wrap_text(text, font, max_width, draw):
             lines.append(current_line)
     return lines if lines else [""]
 
-# 마크다운 테이블을 Pillow를 이용해 이미지로 렌더링하는 함수
+# 마크다운 테이블을 깔끔한 PNG 이미지로 변환하는 함수
 def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추천 키워드 분석"):
     lines = [line.strip() for line in markdown_text.split('\n') if '|' in line]
     table_data = []
     for line in lines:
         if '---' in line:
             continue
-        cols = [c.strip() for c in line.split('|')[1:-1]]
+        cols = [clean_markdown(c.strip()) for c in line.split('|')[1:-1]]
         if cols:
             table_data.append(cols)
     
     if len(table_data) < 2:
-        table_data = [["구분", "추천 키워드", "타겟팅 전략 및 예상 검색 의도"], ["결과", markdown_text, "분석 결과"]]
+        table_data = [["구분", "추천 키워드", "타겟팅 전략 및 예상 검색 의도"], ["결과", clean_markdown(markdown_text), "분석 결과"]]
 
     headers = table_data[0]
     rows = table_data[1:]
@@ -143,12 +139,14 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
     img = Image.new("RGB", (total_width, total_height), "#FFFFFF")
     draw = ImageDraw.Draw(img)
 
+    # 상단 타이틀
     draw.rectangle([30, 25, total_width - 30, 75], fill="#1B5E20")
     draw.text((50, 38), title, fill="#FFFFFF", font=title_font)
 
     y_current = 95
     x_start = 30
 
+    # 테이블 헤더
     draw.rectangle([x_start, y_current, x_start + sum(col_widths), y_current + header_height], fill="#2E7D32")
     
     x_current = x_start
@@ -168,6 +166,7 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
 
     y_current += header_height
 
+    # 테이블 데이터 행
     for r_idx, row_cells in enumerate(processed_rows):
         r_height = row_heights[r_idx]
         bg_color = "#F1F8E9" if r_idx % 2 == 0 else "#FFFFFF"
