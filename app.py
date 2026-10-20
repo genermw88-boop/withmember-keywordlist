@@ -3,8 +3,7 @@ import io
 import urllib.request
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
+from PIL import Image, ImageDraw, ImageFont
 from google import genai
 
 # 페이지 설정
@@ -13,28 +12,6 @@ st.set_page_config(
     page_icon="🎯",
     layout="wide"
 )
-
-# 📊 한글 폰트 강제 로드 및 등록 함수 (직접 TTF 다운로드 방식)
-@st.cache_resource
-def get_korean_font():
-    font_path = "NanumGothic.ttf"
-    if not os.path.exists(font_path):
-        try:
-            url = "https://github.com/google/fonts/raw/main/apache/nanumgothic/NanumGothic-Regular.ttf"
-            urllib.request.urlretrieve(url, font_path)
-        except Exception:
-            pass
-    
-    if os.path.exists(font_path):
-        fm.fontManager.addfont(font_path)
-        prop = fm.FontProperties(fname=font_path)
-        return prop
-    return None
-
-font_prop = get_korean_font()
-if font_prop:
-    plt.rcParams['font.family'] = font_prop.get_name()
-plt.rcParams['axes.unicode_minus'] = False
 
 # 헤더 섹션
 st.title("🎯 스마트플레이스 SEO 대표 키워드 자동 추출기")
@@ -64,8 +41,52 @@ with col3:
 # 이벤트/시즌별 키워드 입력 필드 (선택 사항)
 event_input = st.text_input("🎯 이벤트 / 시즌별 키워드 조건 (선택 입력)", placeholder="예: 크리스마스, 여름휴가, 수험생 할인 등 (입력 시에만 반영됩니다)")
 
-# 마크다운 테이블을 이미지(BytesIO)로 변환하는 함수 (셀 단위 폰트 강제 적용 포함)
-def markdown_table_to_image(markdown_text, title="스마트플레이스 추천 키워드 분석"):
+# 폰트 다운로드 및 로드 함수 (Pillow 전용)
+@st.cache_resource
+def load_fonts():
+    font_path = "NanumGothic.ttf"
+    if not os.path.exists(font_path):
+        try:
+            url = "https://github.com/google/fonts/raw/main/apache/nanumgothic/NanumGothic-Regular.ttf"
+            urllib.request.urlretrieve(url, font_path)
+        except Exception:
+            pass
+    
+    try:
+        title_font = ImageFont.truetype(font_path, 22)
+        header_font = ImageFont.truetype(font_path, 14)
+        cell_font = ImageFont.truetype(font_path, 13)
+    except Exception:
+        # 폰트 로드 실패 시 기본 폰트 fallback
+        title_font = ImageFont.load_default()
+        header_font = ImageFont.load_default()
+        cell_font = ImageFont.load_default()
+        
+    return title_font, header_font, cell_font
+
+title_font, header_font, cell_font = load_fonts()
+
+# 텍스트를 지정된 너비에 맞게 줄바꿈하는 헬퍼 함수
+def wrap_text(text, font, max_width, draw):
+    lines = []
+    for paragraph in text.split('\n'):
+        words = paragraph.split(' ')
+        current_line = ""
+        for word in words:
+            test_line = current_line + " " + word if current_line else word
+            bbox = draw.textbbox((0, 0), test_line, font=font)
+            if bbox[2] <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+        if current_line:
+            lines.append(current_line)
+    return lines if lines else [""]
+
+# 마크다운 테이블을 Pillow를 이용해 완벽하게 이미지로 렌더링하는 함수
+def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추천 키워드 분석"):
     lines = [line.strip() for line in markdown_text.split('\n') if '|' in line]
     table_data = []
     for line in lines:
@@ -76,48 +97,112 @@ def markdown_table_to_image(markdown_text, title="스마트플레이스 추천 �
             table_data.append(cols)
     
     if len(table_data) < 2:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.axis('off')
-        ax.text(0.05, 0.95, markdown_text, transform=ax.transAxes, fontsize=11, 
-                verticalalignment='top', wrap=True, fontproperties=font_prop)
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', dpi=300)
-        plt.close(fig)
-        buf.seek(0)
-        return buf
+        table_data = [["구분", "추천 키워드", "타겟팅 전략 및 예상 검색 의도"], ["결과", markdown_text, "분석 결과"]]
 
     headers = table_data[0]
     rows = table_data[1:]
 
-    fig, ax = plt.subplots(figsize=(12, len(rows) * 0.9 + 2.5))
-    ax.axis('off')
+    # 컬럼별 너비 설정 (총합 1120px)
+    col_widths = [160, 260, 700]
+    total_width = sum(col_widths) + 60  # 좌우 여백 각 30px
     
-    table = ax.table(cellText=rows, colLabels=headers, loc='center', cellLoc='center')
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1, 1.8)
-    
-    # 🔑 핵심: 테이블의 모든 셀(Cell)마다 한글 폰트 속성을 직접 강제 지정
-    for (row, col), cell in table.get_celld().items():
-        if font_prop:
-            cell.get_text().set_fontproperties(font_prop)
-        if row == 0:
-            cell.set_facecolor('#2E7D32')
-            cell.set_text_props(color='white', weight='bold')
-            if font_prop:
-                cell.get_text().set_fontproperties(font_prop)
-        else:
-            cell.set_facecolor('#F1F8E9' if row % 2 == 0 else '#FFFFFF')
+    # 1단계: 각 행의 높이를 동적으로 계산
+    row_heights = []
+    dummy_img = Image.new("RGB", (100, 100))
+    dummy_draw = ImageDraw.Draw(dummy_img)
 
-    # 타이틀 폰트 적용
-    if font_prop:
-        plt.title(title, fontsize=15, weight='bold', pad=25, color='#1B5E20', fontproperties=font_prop)
-    else:
-        plt.title(title, fontsize=15, weight='bold', pad=25, color='#1B5E20')
+    # 헤더 높이 계산
+    header_max_lines = 1
+    for i, h_text in enumerate(headers):
+        wrapped = wrap_text(h_text, header_font, col_widths[i] - 20, dummy_draw)
+        header_max_lines = max(header_max_lines, len(wrapped))
+    header_height = header_max_lines * 22 + 20
+
+    # 데이터 행 높이 계산
+    processed_rows = []
+    for row in rows:
+        row_wrapped_cells = []
+        max_lines = 1
+        for i, cell_text in enumerate(row):
+            if i >= len(col_widths): 
+                i = len(col_widths) - 1
+            wrapped = wrap_text(cell_text, cell_font, col_widths[i] - 20, dummy_draw)
+            row_wrapped_cells.append(wrapped)
+            max_lines = max(max_lines, len(wrapped))
+        r_height = max_lines * 22 + 20
+        row_heights.append(r_height)
+        processed_rows.append(row_wrapped_cells)
+
+    total_height = 100 + header_height + sum(row_heights) + 50
+
+    # 2단계: 최종 이미지 생성
+    img = Image.new("RGB", (total_width, total_height), "#FFFFFF")
+    draw = ImageDraw.Draw(img)
+
+    # 상단 타이틀 배경 및 타이틀 그리기
+    draw.rectangle([30, 25, total_width - 30, 75], fill="#1B5E20")
+    draw.text((50, 38), title, fill="#FFFFFF", font=title_font)
+
+    # 테이블 그리기 시작 위치
+    y_current = 95
+    x_start = 30
+
+    # 헤더 배경 및 텍스트 그리기
+    draw.rectangle([x_start, y_current, x_start + sum(col_widths), y_current + header_height], fill="#2E7D32")
     
+    x_current = x_start
+    for i, h_text in enumerate(headers):
+        wrapped = wrap_text(h_text, header_font, col_widths[i] - 20, dummy_draw)
+        text_y = y_current + 10
+        for line in wrapped:
+            # 헤더 중앙 정렬
+            bbox = dummy_draw.textbbox((0, 0), line, font=header_font)
+            text_width = bbox[2] - bbox[0]
+            line_x = x_current + (col_widths[i] - text_width) / 2
+            draw.text((line_x, text_y), line, fill="#FFFFFF", font=header_font)
+            text_y += 22
+        
+        # 세로 구분선
+        if i < len(headers) - 1:
+            draw.line([x_current + col_widths[i], y_current, x_current + col_widths[i], y_current + header_height], fill="#FFFFFF", width=1)
+        x_current += col_widths[i]
+
+    y_current += header_height
+
+    # 데이터 행 그리기
+    for r_idx, row_cells in enumerate(processed_rows):
+        r_height = row_heights[r_idx]
+        bg_color = "#F1F8E9" if r_idx % 2 == 0 else "#FFFFFF"
+        
+        # 행 배경
+        draw.rectangle([x_start, y_current, x_start + sum(col_widths), y_current + r_height], fill=bg_color)
+        
+        x_current = x_start
+        for c_idx, wrapped_lines in enumerate(row_cells):
+            text_y = y_current + 10
+            for line in wrapped_lines:
+                # 첫 번째 컬럼(구분)은 중앙 정렬, 나머지는 좌측 정렬
+                if c_idx == 0:
+                    bbox = dummy_draw.textbbox((0, 0), line, font=cell_font)
+                    text_width = bbox[2] - bbox[0]
+                    line_x = x_current + (col_widths[c_idx] - text_width) / 2
+                else:
+                    line_x = x_current + 10
+                
+                draw.text((line_x, text_y), line, fill="#333333", font=cell_font)
+                text_y += 22
+            
+            # 셀 테두리 및 구분선
+            draw.rectangle([x_current, y_current, x_current + col_widths[c_idx], y_current + r_height], outline="#CCCCCC", width=1)
+            x_current += col_widths[c_idx]
+
+        y_current += r_height
+
+    # 바깥쪽 전체 테두리
+    draw.rectangle([x_start, 95, x_start + sum(col_widths), y_current], outline="#1B5E20", width=2)
+
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=300)
-    plt.close(fig)
+    img.save(buf, format='png', dpi=(300, 300))
     buf.seek(0)
     return buf
 
@@ -176,9 +261,9 @@ if st.button("🚀 키워드 추출 및 이미지 생성 시작", type="primary"
                 
                 st.divider()
 
-                # 2. 이미지 변환 및 출력
+                # 2. 이미지 변환 및 출력 (Pillow 기반)
                 st.markdown("### 🖼️ 이미지 결과 및 다운로드")
-                img_buffer = markdown_table_to_image(response.text, title=f"[{store_name}] 스마트플레이스 맞춤형 SEO 키워드 전략")
+                img_buffer = markdown_table_to_image_pil(response.text, title=f"[{store_name}] 스마트플레이스 맞춤형 SEO 키워드 전략")
                 
                 # 화면에 이미지 표시
                 st.image(img_buffer, caption="생성된 키워드 분석표 이미지", use_container_width=True)
