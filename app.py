@@ -41,23 +41,23 @@ with col3:
 # 이벤트/시즌별 키워드 입력 필드 (선택 사항)
 event_input = st.text_input("🎯 이벤트 / 시즌별 키워드 조건 (선택 입력)", placeholder="예: 크리스마스, 여름휴가, 수험생 할인 등 (입력 시에만 반영됩니다)")
 
-# 폰트 다운로드 및 로드 함수 (Pillow 전용)
+# 폰트 다운로드 및 로드 함수 (쓰기 권한이 확실한 /tmp 경로 사용)
 @st.cache_resource
 def load_fonts():
-    font_path = "NanumGothic.ttf"
+    font_path = "/tmp/NanumGothic.ttf"
     if not os.path.exists(font_path):
         try:
             url = "https://github.com/google/fonts/raw/main/apache/nanumgothic/NanumGothic-Regular.ttf"
             urllib.request.urlretrieve(url, font_path)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"폰트 다운로드 오류: {e}")
     
     try:
         title_font = ImageFont.truetype(font_path, 22)
         header_font = ImageFont.truetype(font_path, 14)
         cell_font = ImageFont.truetype(font_path, 13)
-    except Exception:
-        # 폰트 로드 실패 시 기본 폰트 fallback
+    except Exception as e:
+        print(f"폰트 로드 오류: {e}")
         title_font = ImageFont.load_default()
         header_font = ImageFont.load_default()
         cell_font = ImageFont.load_default()
@@ -85,7 +85,7 @@ def wrap_text(text, font, max_width, draw):
             lines.append(current_line)
     return lines if lines else [""]
 
-# 마크다운 테이블을 Pillow를 이용해 완벽하게 이미지로 렌더링하는 함수
+# 마크다운 테이블을 Pillow를 이용해 이미지로 렌더링하는 함수
 def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추천 키워드 분석"):
     lines = [line.strip() for line in markdown_text.split('\n') if '|' in line]
     table_data = []
@@ -155,14 +155,12 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
         wrapped = wrap_text(h_text, header_font, col_widths[i] - 20, dummy_draw)
         text_y = y_current + 10
         for line in wrapped:
-            # 헤더 중앙 정렬
             bbox = dummy_draw.textbbox((0, 0), line, font=header_font)
             text_width = bbox[2] - bbox[0]
             line_x = x_current + (col_widths[i] - text_width) / 2
             draw.text((line_x, text_y), line, fill="#FFFFFF", font=header_font)
             text_y += 22
         
-        # 세로 구분선
         if i < len(headers) - 1:
             draw.line([x_current + col_widths[i], y_current, x_current + col_widths[i], y_current + header_height], fill="#FFFFFF", width=1)
         x_current += col_widths[i]
@@ -174,14 +172,12 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
         r_height = row_heights[r_idx]
         bg_color = "#F1F8E9" if r_idx % 2 == 0 else "#FFFFFF"
         
-        # 행 배경
         draw.rectangle([x_start, y_current, x_start + sum(col_widths), y_current + r_height], fill=bg_color)
         
         x_current = x_start
         for c_idx, wrapped_lines in enumerate(row_cells):
             text_y = y_current + 10
             for line in wrapped_lines:
-                # 첫 번째 컬럼(구분)은 중앙 정렬, 나머지는 좌측 정렬
                 if c_idx == 0:
                     bbox = dummy_draw.textbbox((0, 0), line, font=cell_font)
                     text_width = bbox[2] - bbox[0]
@@ -192,13 +188,11 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
                 draw.text((line_x, text_y), line, fill="#333333", font=cell_font)
                 text_y += 22
             
-            # 셀 테두리 및 구분선
             draw.rectangle([x_current, y_current, x_current + col_widths[c_idx], y_current + r_height], outline="#CCCCCC", width=1)
             x_current += col_widths[c_idx]
 
         y_current += r_height
 
-    # 바깥쪽 전체 테두리
     draw.rectangle([x_start, 95, x_start + sum(col_widths), y_current], outline="#1B5E20", width=2)
 
     buf = io.BytesIO()
@@ -217,7 +211,6 @@ if st.button("🚀 키워드 추출 및 이미지 생성 시작", type="primary"
             try:
                 client = genai.Client(api_key=api_key)
 
-                # 조건에 따른 프롬프트 구성
                 if event_input.strip():
                     event_instruction = f"3. 이벤트/시즌별 키워드 (1개): 사용자가 입력한 조건인 '{event_input}'을 반영하여 트래픽을 극대화할 수 있는 시즈널 키워드"
                     total_desc = "총 6개의 키워드(직접 2개, 간접 2개, 이벤트/시즌 1개, 롱테일 1개)"
