@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 
 # 페이지 설정
 st.set_page_config(
@@ -42,9 +42,8 @@ if st.button("🚀 키워드 추출 및 분석 시작", type="primary"):
     else:
         with st.spinner("🔍 네이버 로컬 검색 패턴 및 연관어 분석 중..."):
             try:
-                # Gemini API 설정 (모든 라이브러리 버전에서 완벽하게 호환되는 gemini-pro 적용)
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-pro')
+                # 최신 공식 google-genai SDK 클라이언트 초기화
+                client = genai.Client(api_key=api_key)
 
                 # 프롬프트 엔지니어링 (15년 경력의 SEO 전문가 페르소나 부여)
                 prompt = f"""
@@ -68,7 +67,10 @@ if st.button("🚀 키워드 추출 및 분석 시작", type="primary"):
                 컬럼 구성: [구분 | 추천 키워드 | 타겟팅 전략 및 예상 검색 의도]
                 """
 
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
 
                 st.success("✨ 키워드 추출이 완료되었습니다!")
                 st.divider()
