@@ -1,6 +1,5 @@
 import os
 import io
-import urllib.request
 import streamlit as st
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
@@ -41,30 +40,40 @@ with col3:
 # 이벤트/시즌별 키워드 입력 필드 (선택 사항)
 event_input = st.text_input("🎯 이벤트 / 시즌별 키워드 조건 (선택 입력)", placeholder="예: 크리스마스, 여름휴가, 수험생 할인 등 (입력 시에만 반영됩니다)")
 
-# 폰트 다운로드 및 로드 함수 (쓰기 권한이 확실한 /tmp 경로 사용)
+# 🔤 우분투 시스템 나눔폰트 경로 직접 로드 (다운로드 방식 완전 배제)
 @st.cache_resource
-def load_fonts():
-    font_path = "/tmp/NanumGothic.ttf"
-    if not os.path.exists(font_path):
-        try:
-            url = "https://github.com/google/fonts/raw/main/apache/nanumgothic/NanumGothic-Regular.ttf"
-            urllib.request.urlretrieve(url, font_path)
-        except Exception as e:
-            print(f"폰트 다운로드 오류: {e}")
+def load_system_fonts():
+    # 리눅스 시스템에 패키지로 설치된 나눔고딕 경로 우선 탐색
+    font_paths = [
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+    ]
     
+    selected_font_path = None
+    for path in font_paths:
+        if os.path.exists(path):
+            selected_font_path = path
+            break
+            
     try:
-        title_font = ImageFont.truetype(font_path, 22)
-        header_font = ImageFont.truetype(font_path, 14)
-        cell_font = ImageFont.truetype(font_path, 13)
-    except Exception as e:
-        print(f"폰트 로드 오류: {e}")
+        if selected_font_path:
+            title_font = ImageFont.truetype(selected_font_path, 22)
+            header_font = ImageFont.truetype(selected_font_path, 14)
+            cell_font = ImageFont.truetype(selected_font_path, 13)
+        else:
+            # 시스템에 없다면 기본 폰트
+            title_font = ImageFont.load_default()
+            header_font = ImageFont.load_default()
+            cell_font = ImageFont.load_default()
+    except Exception:
         title_font = ImageFont.load_default()
         header_font = ImageFont.load_default()
         cell_font = ImageFont.load_default()
         
     return title_font, header_font, cell_font
 
-title_font, header_font, cell_font = load_fonts()
+title_font, header_font, cell_font = load_system_fonts()
 
 # 텍스트를 지정된 너비에 맞게 줄바꿈하는 헬퍼 함수
 def wrap_text(text, font, max_width, draw):
@@ -102,23 +111,19 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
     headers = table_data[0]
     rows = table_data[1:]
 
-    # 컬럼별 너비 설정 (총합 1120px)
     col_widths = [160, 260, 700]
-    total_width = sum(col_widths) + 60  # 좌우 여백 각 30px
+    total_width = sum(col_widths) + 60
     
-    # 1단계: 각 행의 높이를 동적으로 계산
     row_heights = []
     dummy_img = Image.new("RGB", (100, 100))
     dummy_draw = ImageDraw.Draw(dummy_img)
 
-    # 헤더 높이 계산
     header_max_lines = 1
     for i, h_text in enumerate(headers):
         wrapped = wrap_text(h_text, header_font, col_widths[i] - 20, dummy_draw)
         header_max_lines = max(header_max_lines, len(wrapped))
     header_height = header_max_lines * 22 + 20
 
-    # 데이터 행 높이 계산
     processed_rows = []
     for row in rows:
         row_wrapped_cells = []
@@ -135,19 +140,15 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
 
     total_height = 100 + header_height + sum(row_heights) + 50
 
-    # 2단계: 최종 이미지 생성
     img = Image.new("RGB", (total_width, total_height), "#FFFFFF")
     draw = ImageDraw.Draw(img)
 
-    # 상단 타이틀 배경 및 타이틀 그리기
     draw.rectangle([30, 25, total_width - 30, 75], fill="#1B5E20")
     draw.text((50, 38), title, fill="#FFFFFF", font=title_font)
 
-    # 테이블 그리기 시작 위치
     y_current = 95
     x_start = 30
 
-    # 헤더 배경 및 텍스트 그리기
     draw.rectangle([x_start, y_current, x_start + sum(col_widths), y_current + header_height], fill="#2E7D32")
     
     x_current = x_start
@@ -167,7 +168,6 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
 
     y_current += header_height
 
-    # 데이터 행 그리기
     for r_idx, row_cells in enumerate(processed_rows):
         r_height = row_heights[r_idx]
         bg_color = "#F1F8E9" if r_idx % 2 == 0 else "#FFFFFF"
@@ -203,7 +203,7 @@ def markdown_table_to_image_pil(markdown_text, title="스마트플레이스 추�
 # 실행 버튼
 if st.button("🚀 키워드 추출 및 이미지 생성 시작", type="primary"):
     if not api_key:
-        st.error("⚠️ Gemini API Key가 설정되지 않았습니다. (사이드바 입력 또는 Streamlit Secrets 설정 필요)")
+        st.error("⚠️ Gemini API Key가 설정되지 않았습니다.")
     elif not store_name or not region_name:
         st.warning("⚠️ 매장명과 지역명은 필수 입력 항목입니다.")
     else:
@@ -248,20 +248,18 @@ if st.button("🚀 키워드 추출 및 이미지 생성 시작", type="primary"
                 st.success("✨ 키워드 추출 및 이미지 변환이 완료되었습니다!")
                 st.divider()
                 
-                # 1. 텍스트(마크다운) 결과 출력
+                # 1. 텍스트 결과 출력
                 st.markdown("### 📋 텍스트 결과")
                 st.markdown(response.text)
                 
                 st.divider()
 
-                # 2. 이미지 변환 및 출력 (Pillow 기반)
+                # 2. 이미지 변환 및 출력
                 st.markdown("### 🖼️ 이미지 결과 및 다운로드")
                 img_buffer = markdown_table_to_image_pil(response.text, title=f"[{store_name}] 스마트플레이스 맞춤형 SEO 키워드 전략")
                 
-                # 화면에 이미지 표시
                 st.image(img_buffer, caption="생성된 키워드 분석표 이미지", use_container_width=True)
 
-                # 다운로드 버튼 제공
                 st.download_button(
                     label="📥 분석표 이미지(PNG) 다운로드",
                     data=img_buffer,
