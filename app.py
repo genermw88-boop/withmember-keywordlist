@@ -42,32 +42,57 @@ with col3:
 # 이벤트/시즌별 키워드 입력 필드 (선택 사항)
 event_input = st.text_input("🎯 이벤트 / 시즌별 키워드 조건 (선택 입력)", placeholder="예: 크리스마스, 여름휴가, 수험생 할인 등 (입력 시에만 반영됩니다)")
 
-# 🔤 100% 신뢰할 수 있는 나눔고딕 폰트 로드 및 검증 함수
+# 🔤 폰트 다운로드 및 적용 (검증된 CDN 링크 사용)
 @st.cache_resource
 def load_robust_font():
     font_path = "/tmp/NanumGothic.ttf"
-    # 파일이 없거나 다운로드 실패로 용량이 너무 작으면 재다운로드
-    if not os.path.exists(font_path) or os.path.getsize(font_path) < 100000:
-        try:
-            url = "https://github.com/google/fonts/raw/main/apache/nanumgothic/NanumGothic-Regular.ttf"
-            urllib.request.urlretrieve(url, font_path)
-        except Exception as e:
-            st.error(f"폰트 다운로드 중 오류 발생: {e}")
     
+    # 1. 시스템 설치 폰트 확인
+    system_font_paths = [
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+    ]
+    for sys_path in system_font_paths:
+        if os.path.exists(sys_path):
+            try:
+                return (
+                    ImageFont.truetype(sys_path, 22),
+                    ImageFont.truetype(sys_path, 14),
+                    ImageFont.truetype(sys_path, 13)
+                )
+            except Exception:
+                pass
+
+    # 2. 시스템 폰트가 없으면 안정적인 CDN 경로에서 직접 다운로드
+    if not os.path.exists(font_path) or os.path.getsize(font_path) < 100000:
+        urls = [
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumgothic/NanumGothic-Regular.ttf",
+            "https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
+        ]
+        for url in urls:
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req) as response, open(font_path, 'wb') as out_file:
+                    out_file.write(response.read())
+                if os.path.exists(font_path) and os.path.getsize(font_path) > 100000:
+                    break
+            except Exception:
+                continue
+
     try:
         title_font = ImageFont.truetype(font_path, 22)
         header_font = ImageFont.truetype(font_path, 14)
         cell_font = ImageFont.truetype(font_path, 13)
         return title_font, header_font, cell_font
-    except Exception as e:
-        st.error(f"폰트 적용 실패: {e}")
+    except Exception:
+        # 최종 fallback (기본 폰트)
         return ImageFont.load_default(), ImageFont.load_default(), ImageFont.load_default()
 
 title_font, header_font, cell_font = load_robust_font()
 
 # 마크다운 특수문자(** 등) 제거 헬퍼 함수
 def clean_markdown(text):
-    # **텍스트** 형태를 제거하고 순수 텍스트만 남김
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     return text.strip()
 
