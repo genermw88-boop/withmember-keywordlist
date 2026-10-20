@@ -86,7 +86,6 @@ def load_robust_font():
         cell_font = ImageFont.truetype(font_path, 13)
         return title_font, header_font, cell_font
     except Exception:
-        # 최종 fallback (기본 폰트)
         return ImageFont.load_default(), ImageFont.load_default(), ImageFont.load_default()
 
 title_font, header_font, cell_font = load_robust_font()
@@ -255,9 +254,12 @@ if st.button("🚀 키워드 추출 및 이미지 생성 시작", type="primary"
                 [필수 요구 조건]
                 반드시 아래의 구조와 개수에 정확히 맞춰 {total_desc}를 추출하고, 각 키워드마다 타당한 전략적 이유를 함께 작성해줘.
                 1. 직접 키워드 (2개): 업종명과 지역명이 결합되어 소비자가 검색할 확률이 가장 높은 핵심 타겟 키워드 (각각 다른 조합으로 2개)
-                2. 간접 키워드 (2개): 연관 카테고리, 목적성 검색어 (예: 회식장소, 데이트코스, 선물 등)
+                2. 간접 키워드 (2개): 연관 카테고리, 목적성 검색어 (예: 데이트코스, 선물 등)
                 {f"3. 이벤트/시즌별 키워드 (1개): {event_instruction}" if event_input.strip() else ""}
                 4. 롱테일 키워드 (1개): 세부 니즈를 타겟팅하는 3~4어절 이상의 구체적인 복합 키워드
+
+                [엄격한 제약 사항 (Negative Constraint)]
+                - 업종이 식음료/음식점이 아닐 경우, '맛집' 단어가 포함된 키워드는 절대 추출하지 마세요. (예: 네일아트, 뷰티, 펜션 등 매장 성격에 맞지 않는 '맛집' 키워드 원천 차단)
 
                 [출력 형식]
                 결과는 마크다운 테이블 형태로 깔끔하게 출력해줘.
